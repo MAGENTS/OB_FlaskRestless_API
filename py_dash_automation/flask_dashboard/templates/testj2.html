@@ -1,0 +1,13 @@
+<!-- testj2.html -->
+<!DOCTYPE html>
+<meta charset="utf-8">
+
+<html lang="en">
+<body>
+	<ul id="navigation">
+		{% for winner in winners %}
+		<li><a href="{{ 'https://en.wikipedia.org/wiki/' + winner.name }}">{{ winner.name }}</a></li>
+		{% endfor %}
+	</ul>
+</body>
+</html>
