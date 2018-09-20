@@ -16,7 +16,7 @@ def GetUpdates(start_date, end_date):
 
 def GetDateInt(date):
     # Convert String format to DateTime (input format): dt.strptime(date_str, '%Y-%m-%d')
-    # Convert DateTiem back to String: dateTime.strftime('%Y%m%d')
+    # Convert DateTime back to String: dateTime.strftime('%Y%m%d')
     date_dt = dt.strptime(date, '%Y-%m-%d')
     date_str = date_dt.strftime('%Y%m%d')
     return int(date_str)
