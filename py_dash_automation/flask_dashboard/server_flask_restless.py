@@ -1,6 +1,6 @@
 #server_flask_restless
-
 import flask
+from flask import Flask, send_from_directory
 import sqlalchemy as sa
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -12,6 +12,63 @@ from flask_sqlalchemy import SQLAlchemy
 import flask_restless
 import re
 import inflect
+from flask_cors import CORS
+import sqlalchemy as sa
+from sqlalchemy import create_engine, MetaData
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
+import re
+
+def intersect(lst1, lst2):
+    return list(set(lst1) & set(lst2))
+
+def reflect_all_tables_to_declarative(uri):
+    """Reflects all tables to declaratives
+
+    Given a valid engine URI and declarative_base base class
+    reflects all tables and imports them to the global namespace.
+
+    Returns a session object bound to the engine created.
+    """
+
+    # create an unbound base our objects will inherit from
+    Base = declarative_base()
+
+    engine = sa.create_engine(uri)
+    metadata = MetaData(bind=engine)
+    Base.metadata = metadata
+
+    g = globals()
+
+    metadata.reflect()
+    
+    wanted_tables = ['INT_MKTCollectionDetails']
+
+    for tablename, tableobj in metadata.tables.items():
+        try:
+            if tablename in wanted_tables:
+                g[tablename] = type(str(tablename), (Base,), {'__table__' : tableobj })
+                print("Reflecting {0}".format(tablename))
+        except sa.exc.ArgumentError:
+            print("Missing Primary Key: {0}".format(tablename))
+            for col in tableobj.c:
+                #if re.match(".*sk", str(col), re.I):
+                print(col)
+                # print(re.match('*SK', col))
+            g[tablename] = type(str(tablename), (Base,), 
+                                {'__table__' : tableobj,
+								 '__tablename__' : tablename,
+                                 '__mapper_args__' : {
+                                        'primary_key': [col for col in tableobj.c if re.match(".*sk", str(col), re.I)]
+                                        #PrimaryKeyConstraint(re.match(r'*SK', tablename, re.I))
+                                     }
+                                })
+            #for col in (metadata.tables[tablename]).columns:
+            #    print(col)
+
+    Session = sessionmaker(bind=engine)
+    return Session()
+		
 
 def camelize_classname(base, tablename, table):
     "Produce a 'camelized' class name, e.g. "
@@ -31,41 +88,55 @@ def pluralize_collection(base, local_cls, referred_cls, constraint):
                          referred_name)[1:]
     pluralized = _pluralizer.plural(uncamelized)
     return pluralized
-
+	
 # Create the Flask application and the Flask-sqlalchemy object:
 app = flask.Flask(__name__)
+
 app.config['DEBUG'] = True
-
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mssql+pyodbc://ORLEBIDEVDB/INTEGRATION?driver=SQL+Server+Native+Client+11.0'
+app.config['CORS_ALLOW_HEADERS'] = "Content-Type"
 
-engine = sa.create_engine('mssql+pyodbc://ORLEBIDEVDB/INTEGRATION?driver=SQL+Server+Native+Client+11.0')
-metadata = MetaData()
-# metadata.reflect(bind=engine)
+# Expose the url route /api/ to requests from any origin:
+app.config['CORS_RESOURCES'] = {r"/api/*" : {"origins" : "*"}}
+
+# engine = sa.create_engine('mssql+pyodbc://ORLEBIDEVDB/INTEGRATION?driver=SQL+Server+Native+Client+11.0')
+
+#metadata = MetaData()
+#metadata.reflect(bind=engine)
 
 # we can reflect it ourselves from a database, using options
 # such as 'only' to limit what tables we look at...
-metadata.reflect(engine, only=['INT_MKTCollectionDetails'])
+#metadata.reflect(engine, only=['INT_MKTCollectionDetails'])
 
-#mktCollects = Table('INT_MKTCollectionDetails', metadata, autoload=True, autoload_with=engine)
+session = reflect_all_tables_to_declarative('mssql+pyodbc://ORLEBIDEVDB/Integration?driver=SQL+Server+Native+Client+11.0')
+
+
+# mktCollects = Table('mktCollects', metadata, autoload=True, autoload_with=engine)
 #print(type(mktCollects))
 
 # we can then produce a set of mappings from this MetaData.
-Base = automap_base(metadata=metadata)
+#Base = automap_base(metadata=metadata)
+
+#Base.prepare()
 
 # calling prepare() just sets up mapped classes and relationships.
-Base.prepare(engine, reflect=True, 
-			classname_for_table=camelize_classname,
-            name_for_collection_relationship=pluralize_collection)
+#Base.prepare(engine, reflect=True)
+			#classname_for_table=camelize_classname,
+            #name_for_collection_relationship=pluralize_collection)
 
 # mapped classes are now created with names by default
 # matching that of the table name.
-mktCollects = Base.classes.INT_MKTCollectionDetails
+#mktCollects = Base.classes.INT_MKTCollectionDetails
 
-session = Session(engine)
+# session = Session(engine)
+
+mktCollects = session.query(INT_MKTCollectionDetails)
 
 db = SQLAlchemy(app)
 
-print(type(db))
+cors = CORS(app)
+
+# print(type(db))
 
 # Create the Flask-Restless API Manager:
 manager = flask_restless.APIManager(app, flask_sqlalchemy_db=db)
@@ -73,8 +144,8 @@ manager = flask_restless.APIManager(app, flask_sqlalchemy_db=db)
 # Create API endpoints, which will be available at
 # localhost:####/api/<tablename> by default
 # Allowed HTTP methods can be specified as well:
-manager.create_api(mktCollects, 
-					methods=['GET'], # other ops POST, DELETE, etc..
-					max_results_per_page=1000)
-    
+manager.create_api(INT_MKTCollectionDetails, 
+					methods=['GET'],
+					max_results_per_page=1000) # Limit max results to 1000
+ 
 app.run()
